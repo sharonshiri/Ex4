@@ -17,7 +17,10 @@ public class JoystickActivity extends AppCompatActivity {
         setContentView(new JoyStickView(this));
     }
 
-
+    /**
+     * onDestroy
+     * destroy - stop the connection
+     */
     public void onDestroy() {
         super.onDestroy();
         TcpClient.getInstance().stopClient();
@@ -27,15 +30,16 @@ public class JoystickActivity extends AppCompatActivity {
         private float x = 0;
         private float y = 0;
         private final float radius = 100;
-        private float startWid;
-        private float endWid;
-        private float startHei;
-        private float endHei;
+        private float startHeight;
+        private float endHeight;
+        private float startWidth;
+        private float endWidth;
+        private Boolean mouseMoving = false;
         private RectF oval;
-        private Boolean playMoving = false;
-
+        // the messages for the server
         String setAileron = "set controls/flight/aileron ";
         String setElevator = "set controls/flight/elevator ";
+
 
         public JoyStickView(Context v){
             super(v);
@@ -48,74 +52,116 @@ public class JoystickActivity extends AppCompatActivity {
          */
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
-            Paint myPaint = new Paint();
-            myPaint.setColor(Color.rgb(109, 128, 127));
-            myPaint.setStrokeWidth(10);
-
-            Paint myPaint2 = new Paint();
-            myPaint2.setColor(Color.rgb(245, 173, 137));
-            myPaint2.setStrokeWidth(10);
-
-            canvas.drawOval(this.oval, myPaint2);
-            canvas.drawCircle(this.x, this.y, this.radius, myPaint);
-
+            // circle
+            Paint circlePaint = new Paint();
+            circlePaint.setColor(Color.rgb(109, 128, 127));
+            circlePaint.setStrokeWidth(10);
+            // oval
+            Paint ovalPaint = new Paint();
+            ovalPaint.setColor(Color.rgb(245, 173, 137));
+            ovalPaint.setStrokeWidth(10);
+            // draw the oval and the circle inside
+            canvas.drawOval(this.oval, ovalPaint);
+            canvas.drawCircle(this.x, this.y, this.radius, circlePaint);
         }
-        public void onSizeChanged(int w, int h, int oldw, int oldh) {
-            super.onSizeChanged(w, h, oldw, oldh);
-            this.startWid = (float)getWidth()/8;
-            this.endWid = (float)getWidth()-((float)getWidth()/8);
-            this.startHei = (float)getHeight()/8;
-            this.endHei = getHeight()-((float)getHeight()/8);
-            this.oval = new RectF(this.startWid,this.startHei , this.endWid, this.endHei);
-            returnDefault();
+
+        /**
+         * onSizeChanged
+         * @param width
+         * @param height
+         * @param oldWidth
+         * @param oldHeight
+         * set the proportions of the ovals
+         */
+        public void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
+            super.onSizeChanged(width, height, oldWidth, oldHeight);
+            this.startWidth = (float)getWidth() / 8;
+            this.startHeight = (float)getHeight() / 8;
+            this.endWidth = (float)getWidth() - ((float)getWidth() / 8);
+            this.endHeight = getHeight() - ((float)getHeight() / 8);
+            this.oval = new RectF(this.startWidth, this.startHeight, this.endWidth, this.endHeight);
+            setDefaultMiddle();
         }
-        public void returnDefault() {
+
+        /**
+         * setDefaultMiddle
+         * set the x,y of the middle of the screen
+         */
+        public void setDefaultMiddle() {
             this.x = (float)getWidth()/2;
             this.y = (float)getHeight()/2;
         }
 
+
+        /**
+         * onTouchEvent
+         * @param event
+         * @return
+         * dealing with mouse movement - down, move and up
+         */
         public boolean onTouchEvent(MotionEvent event) {
             int action = MotionEventCompat.getActionMasked(event);
+            // get the instance of the tcp client
             TcpClient mTcpClient = TcpClient.getInstance();
             switch (action) {
+                // on press
                 case MotionEvent.ACTION_DOWN: {
+                    // check if the mouse is inside the inner circle
                     if(CheckIfInside(event.getX(), event.getY())) {
-                        this.playMoving = true;
+                        this.mouseMoving = true;
                     }
                     break;
                 }
+                // mouse if moving
                 case MotionEvent.ACTION_MOVE: {
-                    if (!this.playMoving)
+                    if (!this.mouseMoving)
                         return true;
+                    // check if the circle is inside the oval
                     if (CheckForLimit(event.getX(), event.getY())) {
                         this.x = event.getX();
                         this.y = event.getY();
                         invalidate();
-                        float aileron = normelizeAilron(this.x);
-                        float elevator = normelizeElevator(this.y);
-                        //while(mTcpClient.mBufferIn == null || mTcpClient.mBufferOut == null) { }
+                        // normalize the values of the aileron and elevator
+                        float aileron = normalizationAileron(this.x);
+                        float elevator = normalizationElevator(this.y);
+                        // send the aileron and elevator to the server
                         mTcpClient.sendMessage(setAileron + Float.toString(aileron) + "\r\n");
                         mTcpClient.sendMessage(setElevator + Float.toString(elevator) + "\r\n");
                     }
                     break;
                 }
+                // unpress the mouse
                 case MotionEvent.ACTION_UP :
-                    this.playMoving = false;
-                    returnDefault();
+                    this.mouseMoving = false;
+                    // goto the middle
+                    setDefaultMiddle();
                     invalidate();
             }
             return true;
         }
 
-        Boolean CheckIfInside(float xVal, float yVal) {
-            double distance = Math.sqrt((this.x-xVal)*(this.x-xVal) + (this.y-yVal)*(this.y-yVal));
+        /**
+         * check if the mouse is inside the inner circle
+         * @param valueX
+         * @param valueY
+         * @return
+         */
+        Boolean CheckIfInside(float valueX, float valueY) {
+            double distance = Math.sqrt((this.x - valueX)*(this.x - valueX) + (this.y - valueY)*(this.y - valueY));
             return (distance <= this.radius);
 
         }
 
+        /**
+         * CheckForLimit
+         * @param xVal
+         * @param yVal
+         * @return
+         * check if inside the oval, if it is return true otherwise return false
+         */
         Boolean CheckForLimit(float xVal, float yVal) {
-            double xCalc = Math.pow(xVal - this.oval.centerX(),2) / Math.pow(this.oval.width() / 2, 2);
-            double yCalc = Math.pow(yVal - this.oval.centerY(),2) / Math.pow(this.oval.height() / 2, 2);
+            double yCalc = Math.pow(yVal - this.oval.centerY(), 2) / Math.pow(this.oval.height() / 2, 2);
+            double xCalc = Math.pow(xVal - this.oval.centerX(), 2) / Math.pow(this.oval.width() / 2, 2);
             xCalc += yCalc;
             if (xCalc <= 1) {
                 return true;
@@ -123,12 +169,25 @@ public class JoystickActivity extends AppCompatActivity {
             return false;
         }
 
-        public float normelizeAilron(float x) {
-            return (x-((this.startWid+this.endWid)/2))/((this.endWid-this.startWid)/2);
+
+        /**
+         * normalizationElevator
+         * @param y
+         * @return
+         * normalize the y value to be between -1 to 1
+         */
+        public float normalizationElevator(float y) {
+            return (y - ((this.startHeight+this.endHeight) / 2)) / ((this.startHeight-this.endHeight) / 2);
         }
 
-        public float normelizeElevator(float y) {
-            return (y-((this.startHei+this.endHei)/2))/((this.startHei-this.endHei)/2);
+        /**
+         * normalizationAileron
+         * @param x
+         * @return
+         * normalize the x value to be between -1 to 1
+         */
+        public float normalizationAileron(float x) {
+            return (x - ((this.startWidth + this.endWidth) / 2)) / ((this.endWidth - this.startWidth) / 2);
         }
     }
 }
